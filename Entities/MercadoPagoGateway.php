@@ -37,7 +37,7 @@ class MercadoPagoGateway implements PaymentGatewayInterface
 
         $paymentMethods = [
             "excluded_payment_methods" => [],
-            "installments" => 12,
+            "installments" => 1,
             "default_installments" => 1
         ];
     
@@ -48,12 +48,12 @@ class MercadoPagoGateway implements PaymentGatewayInterface
 
         $items = [
             [
-                "id" => "1234567890",
-                "title" => "Product 1 Title",
-                "description" => "Product 1 Description",
-                "currency_id" => "BRL",
-                "quantity" => 12,
-                "unit_price" => 9.90
+                "id" => $payment->id,
+                "title" => settings('app_name'),
+                "description" => $payment->description,
+                "currency_id" => "ARS",
+                "quantity" => 1,
+                "unit_price" => $payment->amount,
             ],
         ];
 
@@ -68,7 +68,7 @@ class MercadoPagoGateway implements PaymentGatewayInterface
             "payer" => $payer,
             "payment_methods" => $paymentMethods,
             "back_urls" => $backUrls,
-            "statement_descriptor" => "My Store",
+            "statement_descriptor" => settings('app_name'),
             "external_reference" => "1234567890",
             "expires" => false,
             "auto_return" => 'approved',
@@ -80,14 +80,11 @@ class MercadoPagoGateway implements PaymentGatewayInterface
 
             // Send the request that will create the new preference for user's checkout flow
             $preference = $client->create($request);
-        } catch(\Exception $e) {
-            dd($e->getMessage(), $e);
-        }
 
-        // Useful props you could use from this object is 'init_point' (URL to Checkout Pro) or the 'id'
-        dd($preference);
-    
-        return $request;
+            return redirect()->to($preference->sandbox_init_point);
+        } catch(\Exception $e) {
+
+        }
     }
 
     protected static function authenticate()
@@ -108,6 +105,8 @@ class MercadoPagoGateway implements PaymentGatewayInterface
     public static function returnGateway(Request $request)
     {
         $gateway = Gateway::query()->where('driver', 'MercadoPagoGateway')->firstOrFail();
+
+        // handle the webhook response
 
     }
 
