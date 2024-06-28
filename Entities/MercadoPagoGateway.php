@@ -72,6 +72,7 @@ class MercadoPagoGateway implements PaymentGatewayInterface
             "external_reference" => "1234567890",
             "expires" => false,
             "auto_return" => 'approved',
+            'notification_url' => route('payment.return', self::endpoint()),
         ];
 
         try {
@@ -107,7 +108,7 @@ class MercadoPagoGateway implements PaymentGatewayInterface
         $gateway = Gateway::query()->where('driver', 'MercadoPagoGateway')->firstOrFail();
 
         // handle the webhook response
-
+        errorLog('mercado:pago', json_encode($request->all()));
     }
 
     /**
