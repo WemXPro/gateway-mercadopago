@@ -177,8 +177,6 @@ class MercadoPagoGateway implements PaymentGatewayInterface
     public static function getConfigMerge(): array
     {
         return [
-            'user' => '',
-            'password' => '',
             'access_token' => '',
         ];
     }
