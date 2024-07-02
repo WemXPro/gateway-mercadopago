@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Http;
 use MercadoPago\MercadoPagoConfig;
 use MercadoPago\Client\Preference\PreferenceClient;
 use MercadoPago\Exceptions\MPApiException;
+use MercadoPago\Client\Payment\PaymentClient;
 
 /**
  * Class MercadoPagoGateway
@@ -69,10 +70,10 @@ class MercadoPagoGateway implements PaymentGatewayInterface
             "payment_methods" => $paymentMethods,
             "back_urls" => $backUrls,
             "statement_descriptor" => settings('app_name'),
-            "external_reference" => "1234567890",
+            "external_reference" => $payment->id,
             "expires" => false,
             "auto_return" => 'approved',
-            'notification_url' => route('payment.return', self::endpoint()),
+            'notification_url' => route('payment.return', ['gateway' => self::endpoint(), 'payment' => $payment->id]),
         ];
 
         try {
@@ -107,8 +108,23 @@ class MercadoPagoGateway implements PaymentGatewayInterface
     {
         $gateway = Gateway::query()->where('driver', 'MercadoPagoGateway')->firstOrFail();
 
-        // handle the webhook response
-        errorLog('mercado:pago'.rand(10000, 99999), json_encode($request->all()));
+        if (!$request->get('action') OR $request->get('action') !== 'payment.created') {
+            return response()->json(['error' => 'Invalid action type'], 400);
+        }
+
+        if (!$request->get('live_mode')) {
+            return response()->json(['error' => 'Transaction is not in live mode'], 400);
+        }
+
+        // Get the payment ID from the request
+        $paymentId = $request->get('payment');
+        $payment = Payment::query()->where('id', $paymentId)->firstOrFail();
+
+        if (!$payment) {
+            return response()->json(['error' => 'Payment ID not provided'], 400);
+        }
+
+        $payment->completed();
     }
 
     /**
