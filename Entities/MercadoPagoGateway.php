@@ -10,7 +10,9 @@ use Illuminate\Support\Facades\Http;
 use MercadoPago\MercadoPagoConfig;
 use MercadoPago\Client\Preference\PreferenceClient;
 use MercadoPago\Exceptions\MPApiException;
-use MercadoPago\Client\Payment\PaymentClient;
+use App\Models\Settings;
+use Illuminate\Support\Str;
+
 
 /**
  * Class MercadoPagoGateway
@@ -33,8 +35,14 @@ class MercadoPagoGateway implements PaymentGatewayInterface
      */
     public static function processGateway(Gateway $gateway, Payment $payment)
     {
+        // generate a webhook secret
+        self::generateWebhookSecret();
+
         // Authenticate with the MercadoPago API
         self::authenticate();
+
+        // convert USD to currency
+        $currencyAmount = $payment->amount * $gateway->config()['usd_to_currency'];
 
         $paymentMethods = [
             "excluded_payment_methods" => [],
@@ -52,9 +60,9 @@ class MercadoPagoGateway implements PaymentGatewayInterface
                 "id" => $payment->id,
                 "title" => settings('app_name'),
                 "description" => $payment->description,
-                "currency_id" => "ARS",
+                "currency_id" => $gateway->config()['currency'],
                 "quantity" => 1,
-                "unit_price" => $payment->amount,
+                "unit_price" => $currencyAmount,
             ],
         ];
 
@@ -73,7 +81,7 @@ class MercadoPagoGateway implements PaymentGatewayInterface
             "external_reference" => $payment->id,
             "expires" => false,
             "auto_return" => 'approved',
-            'notification_url' => route('payment.return', ['gateway' => self::endpoint(), 'payment' => $payment->id]),
+            'notification_url' => route('payment.return', ['gateway' => self::endpoint(), 'payment' => $payment->id, 'wh_secret' => self::getWebhookSecret()]),
         ];
 
         try {
@@ -83,9 +91,14 @@ class MercadoPagoGateway implements PaymentGatewayInterface
             // Send the request that will create the new preference for user's checkout flow
             $preference = $client->create($request);
 
+            // if in sandbox mode, redirect to sandbox
+            if ($gateway->config()['sandox_mode'] == 'true') {
+                return redirect()->to($preference->sandbox_init_point);
+            }
+
             return redirect()->to($preference->init_point);
         } catch(\Exception $e) {
-
+            ErrorLog('mercado-pago', json_encode($e));
         }
     }
 
@@ -95,8 +108,21 @@ class MercadoPagoGateway implements PaymentGatewayInterface
 
         // Getting the access token from .env file (create your own function)
         $mpAccessToken = $gateway->config()['access_token'];
+
         // Set the token the SDK's config
         MercadoPagoConfig::setAccessToken($mpAccessToken);
+    }
+
+    protected static function generateWebhookSecret(): void
+    {
+        if (!settings('encrypted::mercado_pago_webhook_secret')) {
+            Settings::put('encrypted::mercado_pago_webhook_secret', Str::random(16));
+        }
+    }
+
+    public static function getWebhookSecret(): string
+    {
+        return settings('encrypted::mercado_pago_webhook_secret');
     }
 
     /**
@@ -112,8 +138,13 @@ class MercadoPagoGateway implements PaymentGatewayInterface
             return response()->json(['error' => 'Invalid action type'], 400);
         }
 
-        if (!$request->get('live_mode')) {
+        if (!$request->get('live_mode') AND $gateway->config()['sandox_mode'] == 'false') {
             return response()->json(['error' => 'Transaction is not in live mode'], 400);
+        }
+
+        // validate the webhook secret
+        if ($request->get('wh_secret') !== self::getWebhookSecret()) {
+            return response()->json(['error' => 'Invalid webhook secret'], 400);
         }
 
         // Get the payment ID from the request
@@ -176,8 +207,14 @@ class MercadoPagoGateway implements PaymentGatewayInterface
      */
     public static function getConfigMerge(): array
     {
+        // generate a webhook secret
+        self::generateWebhookSecret();
+        
         return [
+            'currency' => 'ARS',
+            'usd_to_currency' => 915,
             'access_token' => '',
+            'sandox_mode' => 'false',
         ];
     }
 
