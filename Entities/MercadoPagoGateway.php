@@ -83,7 +83,7 @@ class MercadoPagoGateway implements PaymentGatewayInterface
             // Send the request that will create the new preference for user's checkout flow
             $preference = $client->create($request);
 
-            return redirect()->to($preference->sandbox_init_point);
+            return redirect()->to($preference->init_point);
         } catch(\Exception $e) {
 
         }
