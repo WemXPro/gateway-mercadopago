@@ -133,6 +133,11 @@ class MercadoPagoGateway implements PaymentGatewayInterface
     public static function returnGateway(Request $request)
     {
         $gateway = Gateway::query()->where('driver', 'MercadoPagoGateway')->firstOrFail();
+		
+        // $response = Http::withToken($gateway->config()['access_token'])->get('https://api.mercadopago.com/v1/payments/' . $request->get('payment'));
+        // dd($response, $response->json(), 'https://api.mercadopago.com/v1/payments/' . $request->get('payment'));
+		 
+		ErrorLog('mercado-webhook', json_encode($request->all()));
 
         if (!$request->get('action') OR $request->get('action') !== 'payment.created') {
             return response()->json(['error' => 'Invalid action type'], 400);
@@ -155,7 +160,21 @@ class MercadoPagoGateway implements PaymentGatewayInterface
             return response()->json(['error' => 'Payment ID not provided'], 400);
         }
 
-        $payment->completed();
+        if($gateway->config()['sandox_mode'] == 'false') {
+            try {
+                $response = Http::withToken($gateway->config()['access_token'])->get('https://api.mercadopago.com/v1/payments/' . $request->get('data_id'));
+
+                if(isset($response['status']) AND $response['status'] == 'approved') {
+                    $payment->completed();
+                } else {
+                    throw new \Exception('Lookup failed');
+                }
+            } catch (\Exception $error) {
+		        ErrorLog('mercado-pago-api-payment-lookup-failed', json_encode($request->all()));
+            }
+        } else {
+            $payment->completed();
+        }
     }
 
     /**
